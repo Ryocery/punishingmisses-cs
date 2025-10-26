@@ -40,7 +40,10 @@ public class Main : BasePlugin {
         CBasePlayerWeapon? activeWeapon = player.PlayerPawn.Value.WeaponServices?.ActiveWeapon.Value;
         if (activeWeapon == null) return HookResult.Continue;
         
-        int weaponDamage = GetWeaponDamage((CCSWeaponBase)activeWeapon);
+        CCSWeaponBase? weapon = activeWeapon as CCSWeaponBase;
+        if (weapon == null) return HookResult.Continue;
+        
+        int weaponDamage = GetWeaponDamage(weapon);
         
         _recentShots[(int) player.UserId] = new ShotInfo {
             TimeStamp = DateTime.Now,
