@@ -18,7 +18,6 @@ public class Main : BasePlugin {
         
         RegisterEventHandler<EventWeaponFire>(OnWeaponFire);
         RegisterEventHandler<EventPlayerHurt>(OnPlayerHurt);
-        RegisterEventHandler<EventBulletImpact>(OnBulletImpact);
     
         if (hotReload) {
             Logger.LogInformation("Plugin hot reloaded successfully!");
@@ -35,21 +34,25 @@ public class Main : BasePlugin {
     
     private HookResult OnWeaponFire(EventWeaponFire @event, GameEventInfo info) {
         CCSPlayerController? player = @event.Userid;
-        if (player == null || !player.IsValid || player.PlayerPawn.Value == null || player.UserId == null) return HookResult.Continue;
+        if (player == null || !player.IsValid || player.PlayerPawn.Value == null || player.UserId == null) 
+            return HookResult.Continue;
         
         CBasePlayerWeapon? activeWeapon = player.PlayerPawn.Value.WeaponServices?.ActiveWeapon.Value;
         if (activeWeapon == null) return HookResult.Continue;
         
-        CCSWeaponBase? weapon = activeWeapon as CCSWeaponBase;
-        if (weapon == null) return HookResult.Continue;
+        CCSWeaponBase weapon = activeWeapon.As<CCSWeaponBase>();
+        if (weapon.VData == null) return HookResult.Continue;
         
-        int weaponDamage = GetWeaponDamage(weapon);
+        int weaponDamage = weapon.VData.Damage;
+        int userId = (int)player.UserId;
         
-        _recentShots[(int) player.UserId] = new ShotInfo {
+        _recentShots[userId] = new ShotInfo {
             TimeStamp = DateTime.Now,
             Damage = weaponDamage,
             DidHit = false
         };
+
+        AddTimer(0.01f, () => CheckForMiss(player, userId));
         
         return HookResult.Continue;
     }
@@ -58,31 +61,27 @@ public class Main : BasePlugin {
         CCSPlayerController? attacker = @event.Attacker;
         if (attacker == null || !attacker.IsValid || attacker.UserId == null) return HookResult.Continue;
         
-        if (_recentShots.ContainsKey((int) attacker.UserId)) {
-            _recentShots[(int) attacker.UserId].DidHit = true;
+        if (_recentShots.ContainsKey((int)attacker.UserId)) {
+            _recentShots[(int)attacker.UserId].DidHit = true;
         }
         
         return HookResult.Continue;
     }
 
-    private HookResult OnBulletImpact(EventBulletImpact @event, GameEventInfo info) {
-        CCSPlayerController? player = @event.Userid;
-        if (player == null || !player.IsValid || player.UserId == null) return HookResult.Continue;
+    private void CheckForMiss(CCSPlayerController player, int userId) {
+        if (!_recentShots.ContainsKey(userId)) return;
         
-        if (_recentShots.ContainsKey((int) player.UserId)) {
-            ShotInfo? shot = _recentShots[(int) player.UserId];
-            
-            if ((DateTime.Now - shot.TimeStamp).TotalMilliseconds > 50 && !shot.DidHit) {
-                ApplyMissPenalty(player, shot.Damage);
-                _recentShots.Remove((int) player.UserId);
-            }
+        ShotInfo shot = _recentShots[userId];
+        
+        if (!shot.DidHit) {
+            ApplyMissPenalty(player, shot.Damage);
         }
         
-        return HookResult.Continue;
+        _recentShots.Remove(userId);
     }
     
     private void ApplyMissPenalty(CCSPlayerController player, int damage) {
-        if (player.PlayerPawn.Value == null) return;
+        if (!player.IsValid || player.PlayerPawn.Value == null) return;
         
         player.PlayerPawn.Value.Health -= damage;
         
@@ -90,11 +89,6 @@ public class Main : BasePlugin {
             player.CommitSuicide(false, true);
         }
         
-        Logger.LogInformation("{PlayerPlayerName} missed and took {Damage} damage!", player.PlayerName, damage);
-    }
-
-    private int GetWeaponDamage(CCSWeaponBase weapon) {
-        CCSWeaponBaseVData? vData = weapon.VData;
-        return vData?.Damage ?? 25;
+        Logger.LogInformation("{PlayerName} missed and took {Damage} damage!", player.PlayerName, damage);
     }
 }
